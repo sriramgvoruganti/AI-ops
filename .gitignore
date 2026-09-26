@@ -21,3 +21,16 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+### Python ###
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.db
+
+### Node ###
+node_modules/
+dist/
+
+### Env ###
+.env
