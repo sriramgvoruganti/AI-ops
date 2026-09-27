@@ -5,6 +5,7 @@
 | Frontend | React 19 + TypeScript + Vite, React Router         |
 | Backend  | FastAPI, SQLAlchemy 2, Alembic, JWT auth (bcrypt)  |
 | Database | PostgreSQL 16                                      |
+| Metrics  | Prometheus, postgres-exporter                      |
 
 **Features:** product catalog with search and category filters, cart and checkout (with stock
 checks and row locking to prevent overselling), order history with cancellation, customer/admin
@@ -19,6 +20,7 @@ docker compose up --build
 - Shop: http://localhost:5173
 - API docs (Swagger): http://localhost:8000/api/docs
 - Admin login: `admin@example.com` / `admin12345` (override with `ADMIN_EMAIL` / `ADMIN_PASSWORD`)
+- Prometheus: http://localhost:9090
 
 On startup the backend runs migrations and seeds a starter catalog (idempotent).
 Code changes hot-reload in both containers. Reset the database with `docker compose down -v`.
@@ -39,6 +41,41 @@ cd frontend
 npm install && npm run dev                          # http://localhost:5173, proxies /api -> :8000
 ```
 
+## Monitoring
+
+Prometheus (config in `monitoring/prometheus.yml`) scrapes every 15s:
+
+| Job        | Target                    | What                                            |
+| ---------- | ------------------------- | ----------------------------------------------- |
+| `backend`  | `backend:8000/metrics`    | HTTP request rate/latency + store metrics below |
+| `postgres` | `postgres-exporter:9187`  | Connections, transactions, table/DB stats       |
+
+Store metrics (defined in `backend/app/metrics.py`):
+
+| Metric                                   | Type    | Labels         |
+| ---------------------------------------- | ------- | -------------- |
+| `freshmart_orders_placed_total`          | counter |                |
+| `freshmart_order_revenue_dollars_total`  | counter |                |
+| `freshmart_order_items_total`            | counter |                |
+| `freshmart_orders_cancelled_total`       | counter | `cancelled_by` |
+| `freshmart_checkout_failures_total`      | counter | `reason`       |
+
+Example queries:
+
+```promql
+sum(rate(http_requests_total[5m])) by (handler)                  # request rate per endpoint
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))  # p95 latency
+increase(freshmart_order_revenue_dollars_total[1h])              # revenue in the last hour
+sum(rate(freshmart_checkout_failures_total[15m])) by (reason)    # why checkouts fail
+```
+
+`/metrics` lives outside `/api`, so the frontend proxy doesn't expose it. After editing
+`prometheus.yml`, reload without restarting: `curl -X POST localhost:9090/-/reload`.
+
+Counters live in process memory and reset when the backend restarts (`rate()`/`increase()`
+handle that). If you run uvicorn with multiple workers, enable prometheus_client's
+[multiprocess mode](https://prometheus.github.io/client_python/multiprocess/).
+
 ## Tests
 
 ```bash
@@ -58,6 +95,8 @@ backend/
     seed.py          Admin user + starter catalog
   alembic/           Database migrations
   tests/
+monitoring/
+  prometheus.yml     Scrape config
 frontend/
   src/
     api.ts           fetch wrapper, token storage, money formatting

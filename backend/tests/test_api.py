@@ -109,3 +109,26 @@ def test_admin_manages_products_and_orders(client):
         f"/api/admin/orders/{order['id']}", json={"status": "cancelled"}, headers=admin
     )
     assert res.status_code == 409
+
+
+def metric(client, name: str) -> float:
+    for line in client.get("/metrics").text.splitlines():
+        if line.startswith(name + " ") or line.startswith(name + "{"):
+            return float(line.rsplit(" ", 1)[1])
+    return 0.0
+
+
+def test_metrics_track_orders(client):
+    before_orders = metric(client, "freshmart_orders_placed_total")
+    before_revenue = metric(client, "freshmart_order_revenue_dollars_total")
+
+    headers = register(client)
+    product = first_product(client)
+    client.post("/api/cart/items", json={"product_id": product["id"], "quantity": 2}, headers=headers)
+    client.post("/api/orders", json={"shipping_address": "1 Main St"}, headers=headers)
+
+    assert metric(client, "freshmart_orders_placed_total") == before_orders + 1
+    assert metric(client, "freshmart_order_revenue_dollars_total") == before_revenue + float(
+        Decimal(product["price"]) * 2
+    )
+    assert "http_requests_total" in client.get("/metrics").text

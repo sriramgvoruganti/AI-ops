@@ -3,6 +3,13 @@ from sqlalchemy import delete, select
 
 from app.deps import CurrentUser, DbSession
 from app.inventory import lock_products, restock
+from app.metrics import (
+    CHECKOUT_FAILURES,
+    ORDER_ITEMS,
+    ORDER_REVENUE,
+    ORDERS_CANCELLED,
+    ORDERS_PLACED,
+)
 from app.models import CartItem, Order, OrderItem, OrderStatus, User
 from app.schemas import CheckoutIn, OrderOut
 
@@ -20,6 +27,7 @@ def _get_order(db: DbSession, user: User, order_id: int) -> Order:
 def checkout(body: CheckoutIn, user: CurrentUser, db: DbSession):
     cart = db.scalars(select(CartItem).where(CartItem.user_id == user.id)).all()
     if not cart:
+        CHECKOUT_FAILURES.labels(reason="empty_cart").inc()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Your cart is empty")
 
     # Lock the products so concurrent checkouts can't oversell stock.
@@ -28,8 +36,10 @@ def checkout(body: CheckoutIn, user: CurrentUser, db: DbSession):
     for line in cart:
         product = products[line.product_id]
         if not product.is_active:
+            CHECKOUT_FAILURES.labels(reason="unavailable").inc()
             raise HTTPException(status.HTTP_409_CONFLICT, f"{product.name} is no longer available")
         if line.quantity > product.stock:
+            CHECKOUT_FAILURES.labels(reason="out_of_stock").inc()
             raise HTTPException(
                 status.HTTP_409_CONFLICT, f"Only {product.stock} of {product.name} in stock"
             )
@@ -48,6 +58,10 @@ def checkout(body: CheckoutIn, user: CurrentUser, db: DbSession):
     db.execute(delete(CartItem).where(CartItem.user_id == user.id))
     db.commit()
     db.refresh(order)  # load server-generated created_at
+
+    ORDERS_PLACED.inc()
+    ORDER_REVENUE.inc(float(order.total))
+    ORDER_ITEMS.inc(sum(i.quantity for i in order.items))
     return order
 
 
@@ -71,4 +85,5 @@ def cancel_order(order_id: int, user: CurrentUser, db: DbSession):
     restock(db, order)
     order.status = OrderStatus.cancelled
     db.commit()
+    ORDERS_CANCELLED.labels(cancelled_by="customer").inc()
     return order

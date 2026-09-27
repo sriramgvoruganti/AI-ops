@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.deps import AdminUser, DbSession
 from app.inventory import restock
+from app.metrics import ORDERS_CANCELLED
 from app.models import Category, Order, OrderStatus, Product
 from app.schemas import (
     AdminOrderOut,
@@ -138,4 +139,6 @@ def update_order_status(order_id: int, body: OrderStatusUpdate, _: AdminUser, db
         restock(db, order)
     order.status = body.status
     db.commit()
+    if body.status == OrderStatus.cancelled:
+        ORDERS_CANCELLED.labels(cancelled_by="admin").inc()
     return order
