@@ -127,3 +127,11 @@ variable "monthly_budget_usd" {
   type        = number
   default     = 200
 }
+
+# --- CI/CD ---
+
+variable "github_repo" {
+  description = "GitHub repository (owner/name) whose main-branch workflows may deploy via OIDC."
+  type        = string
+  default     = "sriramgvoruganti/AI-ops"
+}

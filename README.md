@@ -180,6 +180,32 @@ Uses `monitoring/Dockerfile` + `monitoring/prometheus.aws.yml` for its Prometheu
 Terraform state is local (`infrastructure/*/terraform.tfstate`, contains generated secrets — never commit
 it; use an S3 backend for team use). Prometheus data is ephemeral. No custom domain (add Route 53 + ACM).
 
+## CI/CD (GitHub Actions)
+
+`.github/workflows/ci-cd.yml` runs on every push and pull request:
+
+| Job | Checks |
+|---|---|
+| Backend tests | `alembic upgrade` / `check` / `downgrade` + pytest against a Postgres 16 service |
+| Frontend | `tsc` type-check + Vite build |
+| Terraform | `fmt -check` and `validate` for `infrastructure/eks` and `infrastructure/ecs` |
+| Kubernetes manifests | kubeconform strict schema validation (incl. CRDs) for Kubernetes 1.36 |
+| Docker | backend and frontend images build |
+
+On pushes to `main` (or a manual run), once all checks pass, the **Deploy to EKS** job builds and pushes the
+backend image (tagged with the commit SHA), runs the `migrate` Job, rolls out the backend, publishes the
+frontend to S3, invalidates CloudFront and smoke-tests `/api/health`.
+
+GitHub authenticates to AWS with **OIDC** — no AWS keys are stored in GitHub. Terraform
+(`infrastructure/eks/github.tf`) creates a role that only `main`-branch workflows of this repo can assume,
+with push access to the backend ECR repo, the frontend bucket, CloudFront invalidation, and Kubernetes
+edit rights in the `freshmart` namespace only.
+
+**One-time setup:** GitHub → Settings → Secrets and variables → Actions → **Variables** → New repository
+variable `AWS_DEPLOY_ROLE_ARN` = `terraform -chdir=infrastructure/eks output -raw github_deploy_role_arn`.
+
+Infrastructure changes (Terraform) are still applied manually.
+
 ## Before production
 
 - Set a strong `JWT_SECRET` and change the admin password.
