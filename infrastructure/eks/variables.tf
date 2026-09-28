@@ -135,3 +135,9 @@ variable "github_repo" {
   type        = string
   default     = "sriramgvoruganti/AI-ops"
 }
+
+variable "github_repo_with_ids" {
+  description = "Same repository in GitHub's immutable-ID form (owner@ownerId/name@repoId), as sent in OIDC tokens."
+  type        = string
+  default     = "sriramgvoruganti@334263688/AI-ops@1389570241"
+}

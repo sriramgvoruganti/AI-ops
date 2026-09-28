@@ -21,7 +21,11 @@ data "aws_iam_policy_document" "github_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      # GitHub may send either the name-based or the ID-pinned subject format; both are exact matches.
+      values = [
+        "repo:${var.github_repo}:ref:refs/heads/main",
+        "repo:${var.github_repo_with_ids}:ref:refs/heads/main",
+      ]
     }
   }
 }
