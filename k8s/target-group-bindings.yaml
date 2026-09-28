@@ -1,0 +1,37 @@
+# Registers pod IPs into the Terraform-managed ALB target groups (via the AWS Load Balancer Controller).
+# ${*_TG_ARN} values are substituted by infrastructure/eks/scripts/deploy.sh from Terraform outputs.
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: backend
+  namespace: freshmart
+spec:
+  targetGroupARN: ${BACKEND_TG_ARN}
+  targetType: ip
+  serviceRef:
+    name: backend
+    port: 8000
+---
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  targetGroupARN: ${PROMETHEUS_TG_ARN}
+  targetType: ip
+  serviceRef:
+    name: kps-prometheus
+    port: 9090
+---
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  targetGroupARN: ${GRAFANA_TG_ARN}
+  targetType: ip
+  serviceRef:
+    name: grafana
+    port: 80

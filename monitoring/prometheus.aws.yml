@@ -1,0 +1,23 @@
+# Prometheus config for AWS (ECS Fargate). Baked into the image built from monitoring/Dockerfile.
+# Local docker-compose uses prometheus.yml instead.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Every backend task, discovered through the Cloud Map private DNS namespace.
+  - job_name: backend
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names: ["backend.freshmart.local"]
+        type: A
+        port: 8000
+
+  # postgres-exporter runs as a sidecar in the Prometheus task.
+  - job_name: postgres
+    static_configs:
+      - targets: ["localhost:9187"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

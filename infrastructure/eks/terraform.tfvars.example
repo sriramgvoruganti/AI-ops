@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars and adjust.
+region = "us-east-2"
+
+# Your public IP, for Prometheus (:9090) and Grafana (:3000). Find it: curl -s https://checkip.amazonaws.com
+monitoring_allowed_cidrs = ["203.0.113.4/32"]
+
+# Email alerts from AWS Budgets (recommended). Empty = no budget.
+# budget_alert_email = "you@example.com"
+# monthly_budget_usd = 200
+
+# node_capacity_type = "ON_DEMAND"   # default SPOT (cheaper, may be interrupted)
+# node_count         = 2
+# admin_email        = "you@yourcompany.com"
+
+# --- On the AWS free plan, uncomment these (the defaults above exceed free plan limits) ---
+# cpu_architecture         = "X86_64"
+# node_instance_types      = ["m7i-flex.large"]   # list: aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true
+# node_capacity_type       = "ON_DEMAND"
+# node_count               = 1
+# db_backup_retention_days = 1
+# db_max_allocated_storage = 0

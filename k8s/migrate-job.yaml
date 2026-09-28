@@ -1,0 +1,25 @@
+# Runs `alembic upgrade head` + seed once per deploy, before the backend Deployment is rolled.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: freshmart
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ${BACKEND_IMAGE}
+          command: ["sh", "-c", "alembic upgrade head && python -m app.seed"]
+          envFrom:
+            - secretRef:
+                name: freshmart-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              memory: 512Mi

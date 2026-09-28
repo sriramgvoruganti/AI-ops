@@ -5,7 +5,8 @@
 | Frontend | React 19 + TypeScript + Vite, React Router         |
 | Backend  | FastAPI, SQLAlchemy 2, Alembic, JWT auth (bcrypt)  |
 | Database | PostgreSQL 16                                      |
-| Metrics  | Prometheus, postgres-exporter                      |
+| Metrics  | Prometheus, postgres-exporter (+ Grafana on EKS)   |
+| Cloud    | AWS via Terraform: EKS or ECS, RDS, CloudFront     |
 
 **Features:** product catalog with search and category filters, cart and checkout (with stock
 checks and row locking to prevent overselling), order history with cancellation, customer/admin
@@ -96,7 +97,12 @@ backend/
   alembic/           Database migrations
   tests/
 monitoring/
-  prometheus.yml     Scrape config
+  prometheus.yml     Scrape config (local docker compose)
+  prometheus.aws.yml Scrape config for AWS, baked into monitoring/Dockerfile
+infrastructure/
+  eks/               Terraform for EKS + Helm add-ons, scripts/deploy.sh
+  ecs/               Terraform for ECS Fargate, scripts/deploy.sh
+k8s/                 Kubernetes manifests used by the EKS deploy
 frontend/
   src/
     api.ts           fetch wrapper, token storage, money formatting
@@ -114,6 +120,65 @@ cd backend
 .venv/bin/alembic revision --autogenerate -m "describe change"
 .venv/bin/alembic upgrade head
 ```
+
+## Deploy to AWS (Terraform)
+
+Two alternative stacks, each a self-contained Terraform root in `infrastructure/`:
+
+| | `infrastructure/eks/` (Kubernetes) | `infrastructure/ecs/` (simpler, cheaper) |
+|---|---|---|
+| Compute | EKS 1.36 + managed node group (2× Graviton, Spot by default) | ECS Fargate |
+| App manifests | `k8s/` (Deployment, migration Job, ServiceMonitor, TargetGroupBindings) | ECS task definitions in Terraform |
+| Monitoring | kube-prometheus-stack (Prometheus + Grafana) + postgres-exporter via Helm | Prometheus task + exporter sidecar |
+| Rough cost (idle, us-east-2) | ~$175–205/month (EKS control plane alone is $73) | ~$90–110/month |
+
+Both share the same shape: VPC across 2 AZs (ALB + NAT in public subnets, compute + RDS in private),
+RDS Postgres 16, ECR, generated secrets in Secrets Manager, and CloudFront serving the React build from
+S3 with `/api/*` routed to the ALB (so the site is HTTPS on `*.cloudfront.net` without a custom domain).
+
+### EKS
+
+```
+CloudFront (HTTPS) ─┬─ /*      → S3 (React build)
+                    └─ /api/*  → ALB:80 ──→ backend pods ×2 ──→ RDS Postgres 16
+ALB :9090 / :3000 (your IP only) → Prometheus / Grafana pods (namespace: monitoring)
+```
+
+The ALB is created by Terraform (so CloudFront can reference it); the AWS Load Balancer Controller
+registers pod IPs into its target groups through `TargetGroupBinding` objects.
+
+**Prerequisites:** Terraform ≥ 1.6, AWS CLI v2 with credentials, `kubectl`, Docker running, Node 20+.
+
+```bash
+cp infrastructure/eks/terraform.tfvars.example infrastructure/eks/terraform.tfvars   # your IP, budget email
+infrastructure/eks/scripts/deploy.sh                                                 # prompts before each apply
+```
+
+The script builds and pushes the backend image, applies Terraform (first run ~20–25 min), creates the
+`freshmart-secrets` Kubernetes Secret from Secrets Manager, runs the `migrate` Job, rolls out the backend,
+then publishes the frontend. Re-run it for every release.
+
+```bash
+kubectl config use-context freshmart-eks
+kubectl -n freshmart get pods
+terraform -chdir=infrastructure/eks output -raw admin_password          # store admin
+terraform -chdir=infrastructure/eks output -raw grafana_admin_password  # Grafana user "admin"
+terraform -chdir=infrastructure/eks destroy                             # tear everything down
+```
+
+### ECS
+
+```bash
+cp infrastructure/ecs/terraform.tfvars.example infrastructure/ecs/terraform.tfvars
+infrastructure/ecs/scripts/deploy.sh
+```
+
+Uses `monitoring/Dockerfile` + `monitoring/prometheus.aws.yml` for its Prometheus image.
+
+### Known limits (both)
+
+Terraform state is local (`infrastructure/*/terraform.tfstate`, contains generated secrets — never commit
+it; use an S3 backend for team use). Prometheus data is ephemeral. No custom domain (add Route 53 + ACM).
 
 ## Before production
 

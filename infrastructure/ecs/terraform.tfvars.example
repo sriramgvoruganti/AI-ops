@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars and adjust.
+region = "us-east-2"
+
+# Your public IP, to reach the Prometheus UI (find it with: curl -s https://checkip.amazonaws.com)
+prometheus_allowed_cidrs = ["203.0.113.4/32"]
+
+# admin_email            = "you@yourcompany.com"
+# backend_desired_count  = 2
+# db_instance_class      = "db.t4g.micro"
+# db_multi_az            = false
+# db_deletion_protection = true   # recommended once you have real data
+
+# On the AWS free plan (RDS limits):
+# db_backup_retention_days = 1
+# db_max_allocated_storage = 0

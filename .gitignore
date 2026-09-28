@@ -34,3 +34,11 @@ dist/
 
 ### Env ###
 .env
+
+### Terraform ###
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log
